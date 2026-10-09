@@ -8,11 +8,11 @@ import tempfile
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message
+from aiohttp import web
 from PIL import Image
 from transformers import pipeline
 
-# Вставьте сюда НОВЫЙ токен от @BotFather (в кавычках),
-# либо задайте переменную окружения BOT_TOKEN.
+# Токен берётся из переменной окружения BOT_TOKEN (задаётся в Render → Environment).
 TOKEN = os.getenv("BOT_TOKEN") or "8620454579:AAHIGmMW5nT1fCP33vmTRlKCiH9bLxyBmgg"
 
 THRESHOLD = float(os.getenv("NSFW_THRESHOLD", "0.7"))  # 0..1, ниже = строже
@@ -38,7 +38,7 @@ FFMPEG = get_ffmpeg()
 # --- модель ---------------------------------------------------------------
 classifier = pipeline("image-classification", model="Falconsai/nsfw_image_detection")
 # ограничиваем параллельные проверки, чтобы не положить CPU
-sem = asyncio.Semaphore(2)
+sem = asyncio.Semaphore(1)
 
 
 def score_image(img: Image.Image) -> float:
@@ -143,7 +143,19 @@ async def on_sticker(message: Message):
             )
 
 
+# --- заглушка-порт для Render Web Service ----------------------------------
+async def health(request):
+    return web.Response(text="ok")
+
+
 async def main():
+    app = web.Application()
+    app.router.add_get("/", health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.getenv("PORT", "10000"))
+    await web.TCPSite(runner, "0.0.0.0", port).start()
+    log.info("Health-сервер запущен на порту %s", port)
     await dp.start_polling(bot)
 
 
