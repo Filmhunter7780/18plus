@@ -12,7 +12,8 @@ from aiohttp import web
 from PIL import Image
 from transformers import pipeline
 
-# Токен берётся из переменной окружения BOT_TOKEN (задаётся в Render → Environment).
+# ВАЖНО: вставь сюда СВОЙ НОВЫЙ токен (старый отозван через @BotFather — /revoke).
+# Если репозиторий публичный на GitHub — этот токен снова утечёт, как только ты запушишь файл.
 TOKEN = os.getenv("BOT_TOKEN") or "8620454579:AAHIGmMW5nT1fCP33vmTRlKCiH9bLxyBmgg"
 
 THRESHOLD = float(os.getenv("NSFW_THRESHOLD", "0.7"))  # 0..1, ниже = строже
@@ -156,7 +157,7 @@ async def main():
     await runner.setup()
 
     port = int(os.getenv("PORT", "10000"))
-    await web.TCPSite(app, "0.0.0.0", port).start()
+    await web.TCPSite(runner, "0.0.0.0", port).start()
     log.info("Health-сервер запущен на порту %s", port)
 
     global classifier
