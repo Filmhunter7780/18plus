@@ -36,7 +36,7 @@ def get_ffmpeg() -> str:
 FFMPEG = get_ffmpeg()
 
 # --- модель ---------------------------------------------------------------
-classifier = pipeline("image-classification", model="Falconsai/nsfw_image_detection")
+classifier = None
 # ограничиваем параллельные проверки, чтобы не положить CPU
 sem = asyncio.Semaphore(1)
 
@@ -151,11 +151,21 @@ async def health(request):
 async def main():
     app = web.Application()
     app.router.add_get("/", health)
+
     runner = web.AppRunner(app)
     await runner.setup()
+
     port = int(os.getenv("PORT", "10000"))
-    await web.TCPSite(runner, "0.0.0.0", port).start()
+    await web.TCPSite(app, "0.0.0.0", port).start()
     log.info("Health-сервер запущен на порту %s", port)
+
+    global classifier
+    classifier = await asyncio.to_thread(
+        pipeline,
+        "image-classification",
+        model="Falconsai/nsfw_image_detection"
+    )
+
     await dp.start_polling(bot)
 
 
