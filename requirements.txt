@@ -1,0 +1,7 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+aiogram>=3.4
+torch
+transformers>=4.40,<5
+pillow
+rlottie-python
+imageio-ffmpeg
