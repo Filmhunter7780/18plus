@@ -12,11 +12,12 @@ from aiogram.enums import ChatType
 from aiogram.types import Message
 from aiohttp import web
 from PIL import Image
+import torch
 from transformers import pipeline
 
 # Set BOT_TOKEN in Render Environment. Do not hardcode tokens in source code.
 TOKEN = os.getenv("BOT_TOKEN", "").strip()
-THRESHOLD = float(os.getenv("NSFW_THRESHOLD", "0.50"))
+THRESHOLD = float(os.getenv("NSFW_THRESHOLD", "0.70"))
 DB_PATH = os.getenv("DB_PATH", "cache.db")
 NOTIFY = os.getenv("NOTIFY", "0") == "1"
 
@@ -59,19 +60,12 @@ def score_image(img: Image.Image) -> float:
         raise RuntimeError("NSFW classifier has not loaded")
     img = img.convert("RGB")
     results = classifier(img)
-    # Falconsai/nsfw_image_detection normally returns labels such as "nsfw" and
-    # "normal". Accept common equivalent labels, while never treating "normal"
-    # as NSFW. Log the complete prediction so model-label mismatches are visible.
-    nsfw_terms = ("nsfw", "porn", "explicit", "hentai", "adult", "unsafe")
-    matches = [
-        float(item.get("score", 0.0))
-        for item in results
-        if any(term in str(item.get("label", "")).strip().lower() for term in nsfw_terms)
-    ]
-    if not matches:
-        log.warning("No NSFW label found in model output: %s", results)
-        return 0.0
-    return max(matches)
+    for item in results:
+        if str(item.get("label", "")).strip().lower() in {"nsfw", "porn", "explicit"}:
+            return float(item["score"])
+    # If the model uses a different label name, log it and fail safe (do not delete).
+    log.warning("Model returned labels not recognized as NSFW: %s", results)
+    return 0.0
 
 def score_static(path: str) -> float:
     with Image.open(path) as im:
@@ -157,16 +151,12 @@ def is_group(message: Message) -> bool:
 @dp.message(F.sticker, F.chat.type.in_({"group", "supergroup"}))
 async def on_sticker(message: Message):
     st = message.sticker
-    if st.is_video:
-        kind, suffix = "video", ".webm"
-    elif st.is_animated:
+    if st.is_animated:
         kind, suffix = "tgs", ".tgs"
+    elif st.is_video:
+        kind, suffix = "video", ".webm"
     else:
         kind, suffix = "static", ".webp"
-    log.info(
-        "Received sticker chat_id=%s message_id=%s animated=%s video=%s kind=%s",
-        message.chat.id, message.message_id, st.is_animated, st.is_video, kind,
-    )
     await delete_if_nsfw(message, st.file_id, st.file_unique_id, kind, suffix)
 
 @dp.message(F.photo, F.chat.type.in_({"group", "supergroup"}))
@@ -223,10 +213,11 @@ async def main():
         pipeline,
         "image-classification",
         model="Falconsai/nsfw_image_detection",
+        torch_dtype=torch.float16,
     )
-    log.info("NSFW model loaded; threshold=%.2f; starting Telegram polling", THRESHOLD)
+    log.info("NSFW model loaded; starting Telegram polling")
     try:
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        await dp.start_polling(bot)
     finally:
         await bot.session.close()
         await runner.cleanup()
