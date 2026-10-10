@@ -1,5 +1,0 @@
-aiogram>=3.4
-transformers>=4.40
-pillow
-rlottie-python
-imageio-ffmpeg
